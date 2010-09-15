@@ -25,6 +25,7 @@ using DotNetCasClient.Utils;
 using System.IO;
 using System.Configuration;
 using System.Net.Security;
+using System.Text;
 
 namespace CasOwa
 {
@@ -74,6 +75,11 @@ namespace CasOwa
         static string OwaAuthPath = "/auth/owaauth.dll";
 
         /// <summary>
+        /// OWA Inbox Redirect after authentication
+        /// </summary>
+        static string OwaInboxUrl;
+        
+                /// <summary>
         /// Bootstrap configuration from Web.conf.
         /// </summary>
         static CasOwaAuthHandler()
@@ -105,6 +111,8 @@ namespace CasOwa
 
             OwaOptionalFormFields = ConfigurationManager.AppSettings.Get("CasOwa.OwaOptionalFormFields") ?? OwaOptionalFormFields;
 
+            OwaInboxUrl = ConfigurationManager.AppSettings.Get("CasOwa.OwaInboxUrl");
+            
             // This is setting is neccesary when using untrusted certificates, typically in a development or testing.
             var skipOwaUrlCertificateValidation = ConfigurationManager.AppSettings.Get("CasOwa.skipOwaUrlCertificateValidation");
             if (!String.IsNullOrEmpty(skipOwaUrlCertificateValidation) && bool.Parse(skipOwaUrlCertificateValidation))
@@ -164,11 +172,10 @@ namespace CasOwa
                 throw new HttpException(500, "Received response from " + clearPassRequest + ", but cas:credientials IsNullOrEmpty.  Check CAS server logs for errors.  Make sure SSL certs are trusted.");
             }
 
-
             // POST username/password to owaauth.dll to get sessionid and cadata cookies
             var owaAuthFormFields = "destination=" + OwaUrl 
                                   + "&username=" + user.Identity.Name
-                                  + "&password=" + clearPass
+                                  + "&password=" + HttpUtility.UrlEncode(clearPass, Encoding.ASCII)
                                   + OwaOptionalFormFields;
             var postData = System.Text.Encoding.UTF8.GetBytes(owaAuthFormFields);
             var request = (HttpWebRequest)WebRequest.Create(OwaUrl + OwaAuthPath);
@@ -213,7 +220,17 @@ namespace CasOwa
             {
                 context.Response.Cookies.Add(new HttpCookie(cookie.Name, cookie.Value));
             }
-            context.Response.Redirect(response.GetResponseHeader("Location"));
+
+            string redirectUrl;
+            if (String.IsNullOrEmpty(OwaInboxUrl))
+            {
+                redirectUrl = response.GetResponseHeader("Location");
+            }
+            else
+            {
+                redirectUrl = OwaInboxUrl;
+            }
+            context.Response.Redirect(redirectUrl);
          }
      }
 }
